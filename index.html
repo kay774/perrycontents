@@ -444,19 +444,22 @@ function updateHeaderStats(){document.getElementById('h-published').textContent=
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 
 async function sheetGet(sheet) {
-  // Google Sheets gviz API — CORS 없이 직접 읽기
   const url = 'https://docs.google.com/spreadsheets/d/1Ty8yI1UvQ5w-Ihh5jHHRGh8mlF48RbvijL10dz7nCmo/gviz/tq?tqx=out:json&sheet=' + encodeURIComponent(sheet) + '&t=' + Date.now();
   const res = await fetch(url);
   const text = await res.text();
-  // gviz 응답은 /*O_o*/\ngoogle.visualization.Query.setResponse({...}) 형태
-  const json = text.replace(/^.*?setResponse\(/, '').replace(/\);?\s*$/, '');
-  const obj = JSON.parse(json);
-  if (!obj.table || !obj.table.rows) return [];
-  // 헤더 행 + 데이터 행을 2D 배열로 변환
-  const cols = obj.table.cols.map(c => c.label || '');
-  const rows = obj.table.rows.map(r =>
-    r.c.map(cell => cell ? (cell.v !== null && cell.v !== undefined ? cell.v : '') : '')
+  // /*O_o*/\ngoogle.visualization.Query.setResponse({...}); 형태에서 JSON 추출
+  const match = text.match(/google\.visualization\.Query\.setResponse\((.+)\);?\s*$/s);
+  if (!match) return [];
+  const obj = JSON.parse(match[1]);
+  if (!obj.table) return [];
+  const cols = (obj.table.cols || []).map(c => c.label || '');
+  const rows = (obj.table.rows || []).map(r =>
+    (r.c || []).map(cell => {
+      if (!cell || cell.v === null || cell.v === undefined) return '';
+      return cell.v;
+    })
   );
+  if (!cols.length) return [];
   return [cols, ...rows];
 }
 async function sheetSetSafe(sheet,data){try{await fetch(API,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({sheet,data}),redirect:'follow'})}catch(e){try{await fetch(API,{method:'POST',body:JSON.stringify({sheet,data}),mode:'no-cors'})}catch{}}}
