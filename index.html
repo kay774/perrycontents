@@ -998,17 +998,16 @@ async function autoCollectYoutube() {
     const query = encodeURIComponent('정주용 그래비티');
     // videoDuration=medium(4~20분) + long(20분 이상) 으로 쇼츠 제외
     // search API에 videoDuration 파라미터 사용
-    // 6개월 전부터 현재까지 검색
+    // 6개월 전부터 현재까지 검색 (videoDuration 필터 없이 — 코드에서 직접 필터)
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     const publishedAfter = sixMonthsAgo.toISOString();
-    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&order=date&maxResults=30&videoDuration=medium&publishedAfter=${publishedAfter}&key=AIzaSyCziKHWZjHuXGehZJLjLw_cWTd-TVjERq0`;
-    const searchUrlLong = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&order=date&maxResults=30&videoDuration=long&publishedAfter=${publishedAfter}&key=AIzaSyCziKHWZjHuXGehZJLjLw_cWTd-TVjERq0`;
+    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&order=date&maxResults=50&publishedAfter=${publishedAfter}&key=AIzaSyCziKHWZjHuXGehZJLjLw_cWTd-TVjERq0`;
 
-    const [res1, res2] = await Promise.all([fetch(searchUrl), fetch(searchUrlLong)]);
-    const [data1, data2] = await Promise.all([res1.json(), res2.json()]);
+    const res1 = await fetch(searchUrl);
+    const data1 = await res1.json();
 
-    const allItems = [...(data1.items || []), ...(data2.items || [])];
+    const allItems = [...(data1.items || [])];
     if (!allItems.length) { showToast('검색 결과가 없습니다'); return; }
 
     // 중복 videoId 제거
