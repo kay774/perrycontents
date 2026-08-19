@@ -488,13 +488,15 @@ function updateHeaderStats(){document.getElementById('h-published').textContent=
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 
 async function sheetGet(sheet) {
-  // gviz 방식 — CORS 없이 직접 읽기
   const url = 'https://docs.google.com/spreadsheets/d/1Ty8yI1UvQ5w-Ihh5jHHRGh8mlF48RbvijL10dz7nCmo/gviz/tq?tqx=out:json&sheet=' + encodeURIComponent(sheet) + '&t=' + Date.now();
   const res = await fetch(url);
   const text = await res.text();
-  const match = text.match(/google\.visualization\.Query\.setResponse\((.+)\);?\s*$/s);
-  if (!match) return [];
-  const obj = JSON.parse(match[1]);
+  // indexOf로 안정적 파싱 (/s 플래그 불필요)
+  const start = text.indexOf('(');
+  const end = text.lastIndexOf(');');
+  if (start < 0 || end < 0) return [];
+  var obj;
+  try { obj = JSON.parse(text.slice(start + 1, end)); } catch(e) { return []; }
   if (!obj.table) return [];
   const cols = (obj.table.cols || []).map(function(c){ return c.label || ''; });
   const rows = (obj.table.rows || []).map(function(r){
@@ -996,8 +998,12 @@ async function autoCollectYoutube() {
     const query = encodeURIComponent('정주용 그래비티');
     // videoDuration=medium(4~20분) + long(20분 이상) 으로 쇼츠 제외
     // search API에 videoDuration 파라미터 사용
-    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&order=date&maxResults=30&videoDuration=medium&key=AIzaSyCziKHWZjHuXGehZJLjLw_cWTd-TVjERq0`;
-    const searchUrlLong = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&order=date&maxResults=30&videoDuration=long&key=AIzaSyCziKHWZjHuXGehZJLjLw_cWTd-TVjERq0`;
+    // 6개월 전부터 현재까지 검색
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const publishedAfter = sixMonthsAgo.toISOString();
+    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&order=date&maxResults=30&videoDuration=medium&publishedAfter=${publishedAfter}&key=AIzaSyCziKHWZjHuXGehZJLjLw_cWTd-TVjERq0`;
+    const searchUrlLong = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&order=date&maxResults=30&videoDuration=long&publishedAfter=${publishedAfter}&key=AIzaSyCziKHWZjHuXGehZJLjLw_cWTd-TVjERq0`;
 
     const [res1, res2] = await Promise.all([fetch(searchUrl), fetch(searchUrlLong)]);
     const [data1, data2] = await Promise.all([res1.json(), res2.json()]);
@@ -1061,7 +1067,17 @@ async function autoCollectYoutube() {
       });
     });
 
-    if (!newSources.length) { showToast('새로운 5분 이상 영상이 없습니다'); return; }
+    if (!newSources.length) {
+      const filtered5min = items.filter(item => {
+        const detail = detailMap[item.id.videoId];
+        if (!detail) return false;
+        const duration = parseDuration(detail.contentDetails?.duration || '');
+        return duration >= 300;
+      });
+      const alreadyExists = filtered5min.filter(item => existingUrls.has('https://www.youtube.com/watch?v=' + item.id.videoId));
+      showToast('새 영상 없음 — 5분이상: ' + filtered5min.length + '개, 이미등록: ' + alreadyExists.length + '개');
+      return;
+    }
 
     newSources.forEach((s, i) => { s.id = Date.now() + i; });
     sources = [...newSources, ...sources];
